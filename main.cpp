@@ -4,7 +4,7 @@
 #include <QDebug>
 #include <QElapsedTimer>
 #include <QTimer>
-
+#include <QDateTime>
 
 #define YIANKANG_MAJOR_VER 0
 #define YIANKANG_MINOR_VER_ 1
@@ -13,13 +13,22 @@
 bool serialPortConfig(QSerialPort *serial, qint32 baudRate, QString dataPortNum);
 void sendCfg();
 void serialstart();
-void readAndParseUart();
+QVector<QVector<double>> readAndParseUart();
+QVector<QVector<double>> zeros(int sizeX, int sizeY);
+QVector<QVector<double>> ones(int sizeX, int sizeY,int multiple);
 
 static QSerialPort *userport,*dataport;
 static bool  FlagSerialPort_Connected, userPort_Connected,dataPort_Connected;
 QString dataPortNum, userPortNum;   // Serial Port configuration
 int frameTime = 50;
 QTimer * timerRead;
+QByteArray byteData("");
+qint8 fail = 0;
+int maxPoints = 1150,numDetectedTarget = 0,numDetectedObj = 0;
+QVector<QVector<double>> pcBufPing = zeros(5, maxPoints);
+QVector<QVector<double>> pcPolar = zeros(5, maxPoints);
+QVector<QVector<double>> targetBufPing = ones(10,20,-1);
+
 
 bool serialPortConfig(QSerialPort *serial, qint32 baudRate, QString dataPortNum)
 {
@@ -133,24 +142,63 @@ void serialstart()
         sendCfg();
     }
 }
-void readAndParseUart()
+QVector<QVector<double>> readAndParseUart()
 {
     qint64 numBytes = 4666;
-    QByteArray byteData;
+    fail = 0;
     QByteArray data = dataport->read(numBytes);
     qDebug()<<"readAndParseuart:"<<data<<endl;
 
-    if(byteData.isNull() || byteData.isEmpty())
+    if(byteData.isEmpty())
         byteData = data;
     else
         byteData += data;
 
 //    byteData = Capon3DHeader(byteData);
-}
+    if(fail)
+        return pcBufPing;
 
+    qint64 parseEnd=QDateTime::currentMSecsSinceEpoch();
+    qDebug()<<"parseEnd"<<parseEnd;
+
+    return pcBufPing;
+
+}
+QVector<QVector<double>> zeros(int sizeX, int sizeY)
+{
+   QVector<QVector<double>> result;
+   for (int idx1 = 0; idx1 < sizeX; idx1++)
+   {
+      result.append(QVector<double>());
+      for (int idx2 = 0; idx2 < sizeY; idx2++)
+      {
+//         result[idx1].append(double());
+           result[idx1].append(double(0));
+      }
+   }
+   return result;
+}
+QVector<QVector<double>> ones(int sizeX, int sizeY,int multiple)
+{
+    QVector<QVector<double>> result;
+    for (int idx1 = 0; idx1 < sizeX; idx1++)
+    {
+       result.append(QVector<double>());
+       for (int idx2 = 0; idx2 < sizeY; idx2++)
+       {
+    //         result[idx1].append(double());
+            result[idx1].append(double(multiple));
+       }
+    }
+    return result;
+}
 int main(int argc, char *argv[])
 {
     QCoreApplication a(argc, argv);
+    qDebug()<<"byteData"<<byteData<<"pcBufPing"<<pcBufPing<<endl;
+    qDebug()<<"falldetection_version:"<<YIANKANG_MAJOR_VER<<"."<<YIANKANG_MINOR_VER_;
+
+
 
     serialstart();
 
