@@ -1,6 +1,6 @@
 QT -= gui
 QT += serialport
-CONFIG += c++11 console
+CONFIG += c++17 console
 CONFIG -= app_bundle
 
 # You can make your code fail to compile if it uses deprecated APIs.
@@ -14,3 +14,12 @@ SOURCES += \
 qnx: target.path = /tmp/$${TARGET}/bin
 else: unix:!android: target.path = /opt/$${TARGET}/bin
 !isEmpty(target.path): INSTALLS += target
+
+HEADERS += \
+    include/cppystruct.h \
+    include/cppystruct/calcsize.h \
+    include/cppystruct/data_view.h \
+    include/cppystruct/format.h \
+    include/cppystruct/pack.h \
+    include/cppystruct/string.h \
+    include/cppystruct/unpack.h

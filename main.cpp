@@ -5,6 +5,7 @@
 #include <QElapsedTimer>
 #include <QTimer>
 #include <QDateTime>
+#include "include/cppystruct.h"
 
 #define YIANKANG_MAJOR_VER 0
 #define YIANKANG_MINOR_VER_ 1
@@ -25,9 +26,12 @@ QTimer * timerRead;
 QByteArray byteData("");
 qint8 fail = 0;
 int maxPoints = 1150,numDetectedTarget = 0,numDetectedObj = 0;
+QVector<int> indexes;
 QVector<QVector<double>> pcBufPing = zeros(5, maxPoints);
 QVector<QVector<double>> pcPolar = zeros(5, maxPoints);
 QVector<QVector<double>> targetBufPing = ones(10,20,-1);
+//QByteArray magicWord = "0x708050603040102";
+unsigned long magicWord = 506660481457717506;
 
 
 bool serialPortConfig(QSerialPort *serial, qint32 baudRate, QString dataPortNum)
@@ -106,11 +110,14 @@ void sendCfg()
 
     if(userPort_Connected)
     {
-        timerRead = new QTimer(nullptr);
-        timerRead->setInterval(frameTime);
-        QObject::connect(timerRead,&QTimer::timeout,[=]{
-            readAndParseUart();});
-        timerRead->start();
+//        timerRead = new QTimer(nullptr);
+//        timerRead->setInterval(frameTime);
+//        QObject::connect(timerRead,&QTimer::timeout,[=]{
+//            readAndParseUart();});
+//        timerRead->start();
+        QObject::connect(dataport,&QSerialPort::readyRead,[=]{
+            readAndParseUart();
+        });
     }
 }
 void serialstart()
@@ -142,19 +149,43 @@ void serialstart()
         sendCfg();
     }
 }
+QByteArray Capon3DHeader(QByteArray dataIn)
+{
+    pcBufPing = zeros(5,maxPoints);
+    pcPolar = zeros(5,maxPoints);
+    targetBufPing = zeros(13,20);
+    numDetectedTarget = 0;
+    numDetectedObj = 0;
+    indexes.clear();
+    int tlvHeaderLength = 8,headerLength = 48;
+
+//    qDebug()<<"Capon3DHeader:dataIn"<<dataIn.toHex();
+    auto [ magic, version, packetLength, platform, frameNum, subFrameNum, chirpMargin, frameMargin, uartSentTime, trackProcessTime, numTLVs, checksum] = pystruct::unpack(PY_STRING("Q9I2H"), dataIn.left(headerLength));
+    qDebug()<<"magic"<<magic<<version<<packetLength<<platform<<frameNum<<subFrameNum<<chirpMargin<<frameMargin<<uartSentTime<<uartSentTime<<trackProcessTime<<numTLVs<<checksum;
+//    unsigned long long magic, version, packetLength, platform, frameNum, subFrameNum, chirpMargin, frameMargin, uartSentTime;
+//    unsigned int  trackProcessTime, numTLVs;
+//    unsigned short checksum;
+    qDebug()<<"magicWord"<<magicWord<<endl;
+    if(magic==magicWord)
+            qDebug()<<"true";
+
+    return dataIn;
+}
 QVector<QVector<double>> readAndParseUart()
 {
     qint64 numBytes = 4666;
     fail = 0;
     QByteArray data = dataport->read(numBytes);
-    qDebug()<<"readAndParseuart:"<<data<<endl;
+//    qDebug()<<"readAndParseuart:"<<data<<endl;
 
-    if(byteData.isEmpty())
-        byteData = data;
-    else
-        byteData += data;
+//    if(byteData.isEmpty())
+//        byteData = data;
+//    else
+//        byteData += data;
+     byteData = data;
 
 //    byteData = Capon3DHeader(byteData);
+     Capon3DHeader(byteData);
     if(fail)
         return pcBufPing;
 
@@ -197,8 +228,6 @@ int main(int argc, char *argv[])
     QCoreApplication a(argc, argv);
     qDebug()<<"byteData"<<byteData<<"pcBufPing"<<pcBufPing<<endl;
     qDebug()<<"falldetection_version:"<<YIANKANG_MAJOR_VER<<"."<<YIANKANG_MINOR_VER_;
-
-
 
     serialstart();
 
