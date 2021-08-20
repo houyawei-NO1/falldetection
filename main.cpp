@@ -6,6 +6,8 @@
 #include <QTimer>
 #include <QDateTime>
 #include "include/cppystruct.h"
+#include "NumCpp.hpp"
+#include<iostream>
 
 #define YIANKANG_MAJOR_VER 0
 #define YIANKANG_MINOR_VER_ 1
@@ -14,9 +16,9 @@
 bool serialPortConfig(QSerialPort *serial, qint32 baudRate, QString dataPortNum);
 void sendCfg();
 void serialstart();
-QVector<QVector<double>> readAndParseUart();
-QVector<QVector<double>> zeros(int sizeX, int sizeY);
-QVector<QVector<double>> ones(int sizeX, int sizeY,int multiple);
+nc::NdArray<_Float64> readAndParseUart();
+//QVector<QVector<double>> zeros(int sizeX, int sizeY);
+//QVector<QVector<double>> ones(int sizeX, int sizeY,int multiple);
 
 static QSerialPort *userport,*dataport;
 static bool  FlagSerialPort_Connected, userPort_Connected,dataPort_Connected;
@@ -27,9 +29,10 @@ QByteArray byteData("");
 qint8 fail = 0;
 int maxPoints = 1150,numDetectedTarget = 0,numDetectedObj = 0;
 QVector<int> indexes;
-QVector<QVector<double>> pcBufPing = zeros(5, maxPoints);
-QVector<QVector<double>> pcPolar = zeros(5, maxPoints);
-QVector<QVector<double>> targetBufPing = ones(10,20,-1);
+//QVector<QVector<double>> pcBufPing = zeros(5, maxPoints);
+auto pcBufPing = nc::zeros<_Float64>(5,maxPoints);
+auto pcPolar = nc::zeros<_Float64>(5, maxPoints);
+auto targetBufPing = nc::ones<int>(10,20)*-1;
 //QByteArray magicWord = "0x708050603040102";
 unsigned long magicWord = 506660481457717506;
 
@@ -98,7 +101,7 @@ void sendCfg()
     <<"sensorStart";
     for(int i = 0;i < cfg_list.size();++i)
     {
-        qDebug()<<cfg_list.at(i)<<endl;
+//        qDebug()<<cfg_list.at(i)<<endl;
         userport->write(cfg_list.at(i).toLatin1());
         userport->write("\n");
         userport->waitForBytesWritten(200);
@@ -110,14 +113,14 @@ void sendCfg()
 
     if(userPort_Connected)
     {
-//        timerRead = new QTimer(nullptr);
-//        timerRead->setInterval(frameTime);
-//        QObject::connect(timerRead,&QTimer::timeout,[=]{
-//            readAndParseUart();});
-//        timerRead->start();
-        QObject::connect(dataport,&QSerialPort::readyRead,[=]{
-            readAndParseUart();
-        });
+        timerRead = new QTimer(nullptr);
+        timerRead->setInterval(frameTime);
+        QObject::connect(timerRead,&QTimer::timeout,[=]{
+            readAndParseUart();});
+        timerRead->start();
+//        QObject::connect(dataport,&QSerialPort::readyRead,[=]{
+//            readAndParseUart();
+//        });
     }
 }
 void serialstart()
@@ -151,41 +154,76 @@ void serialstart()
 }
 QByteArray Capon3DHeader(QByteArray dataIn)
 {
-    pcBufPing = zeros(5,maxPoints);
-    pcPolar = zeros(5,maxPoints);
-    targetBufPing = zeros(13,20);
+    pcBufPing = nc::zeros<_Float64>(5,maxPoints);
+    pcPolar = nc::zeros<_Float64>(5,maxPoints);
+    targetBufPing =  nc::zeros<int>(13,20);
     numDetectedTarget = 0;
     numDetectedObj = 0;
     indexes.clear();
     int tlvHeaderLength = 8,headerLength = 48;
 
+     unsigned long long magic, version, packetLength, platform, frameNum, subFrameNum, chirpMargin, frameMargin, uartSentTime;
+     unsigned int  trackProcessTime, numTLVs;
+     unsigned short checksum;
 //    qDebug()<<"Capon3DHeader:dataIn"<<dataIn.toHex();
-    auto [ magic, version, packetLength, platform, frameNum, subFrameNum, chirpMargin, frameMargin, uartSentTime, trackProcessTime, numTLVs, checksum] = pystruct::unpack(PY_STRING("Q9I2H"), dataIn.left(headerLength));
-    qDebug()<<"magic"<<magic<<version<<packetLength<<platform<<frameNum<<subFrameNum<<chirpMargin<<frameMargin<<uartSentTime<<uartSentTime<<trackProcessTime<<numTLVs<<checksum;
-//    unsigned long long magic, version, packetLength, platform, frameNum, subFrameNum, chirpMargin, frameMargin, uartSentTime;
-//    unsigned int  trackProcessTime, numTLVs;
-//    unsigned short checksum;
-    qDebug()<<"magicWord"<<magicWord<<endl;
-    if(magic==magicWord)
-            qDebug()<<"true";
+    while(1)
+    {
+         auto [magic_t, version_t, packetLength_t, platform_t, frameNum_t, subFrameNum_t, chirpMargin_t, frameMargin_t, uartSentTime_t, trackProcessTime_t, numTLVs_t, checksum_t] = pystruct::unpack(PY_STRING("Q9I2H"), dataIn.left(headerLength));
+         qDebug()<<dataIn.size()<<"magic_t"<<magic_t<<version_t<<packetLength_t<<platform_t<<frameNum_t<<subFrameNum_t<<chirpMargin_t<<frameMargin_t<<uartSentTime_t<<uartSentTime_t<<trackProcessTime_t<<numTLVs_t<<checksum_t;
+         if(magic_t==magicWord)
+            {
+            qDebug()<<"magicword_true";
+            dataIn = dataIn.mid(1);
+            }
+         else
+            {
+//          qDebug()<<"magicword_flase";
+            magic = magic_t;
+            version = version_t;
+            packetLength = packetLength_t;
+            platform = platform_t;
+            frameNum = frameNum_t;
+            subFrameNum = subFrameNum_t;
+            chirpMargin =chirpMargin_t;
+            frameMargin = frameMargin_t;
+            uartSentTime = uartSentTime_t;
+            trackProcessTime= trackProcessTime_t;
+            numTLVs =numTLVs_t;
+            checksum = checksum_t;
+            break;
+            }
+    }
 
+    qDebug()<<dataIn.size()<<"magic"<<magic<<version<<packetLength<<platform<<frameNum<<subFrameNum<<chirpMargin<<frameMargin<<uartSentTime<<uartSentTime<<trackProcessTime<<numTLVs<<checksum;
+
+    dataIn = dataIn.mid(headerLength);
+    int remainingData = packetLength - dataIn.length() - headerLength;
+    if (remainingData > 0)
+    {
+        QByteArray newData = dataport->read(remainingData);
+        remainingData = packetLength -dataIn.length() -headerLength - newData.length();
+        dataIn += newData;
+    }
+//     now check TLVs
+//    for(int i = 0;i)
     return dataIn;
 }
-QVector<QVector<double>> readAndParseUart()
+nc::NdArray<_Float64> readAndParseUart()
 {
     qint64 numBytes = 4666;
     fail = 0;
-    QByteArray data = dataport->read(numBytes);
-//    qDebug()<<"readAndParseuart:"<<data<<endl;
+    QByteArray data = dataport->readAll();
+    qDebug()<<"readAndParseuart:"<<data.size()<<byteData.size()<<endl;
 
-//    if(byteData.isEmpty())
-//        byteData = data;
-//    else
-//        byteData += data;
-     byteData = data;
+    if(byteData.isEmpty())
+        byteData = data;
+    else
+        byteData += data;
 
-//    byteData = Capon3DHeader(byteData);
-     Capon3DHeader(byteData);
+//     byteData = data;
+
+    byteData = Capon3DHeader(byteData);
+//    Capon3DHeader(byteData);
     if(fail)
         return pcBufPing;
 
@@ -195,38 +233,39 @@ QVector<QVector<double>> readAndParseUart()
     return pcBufPing;
 
 }
-QVector<QVector<double>> zeros(int sizeX, int sizeY)
-{
-   QVector<QVector<double>> result;
-   for (int idx1 = 0; idx1 < sizeX; idx1++)
-   {
-      result.append(QVector<double>());
-      for (int idx2 = 0; idx2 < sizeY; idx2++)
-      {
-//         result[idx1].append(double());
-           result[idx1].append(double(0));
-      }
-   }
-   return result;
-}
-QVector<QVector<double>> ones(int sizeX, int sizeY,int multiple)
-{
-    QVector<QVector<double>> result;
-    for (int idx1 = 0; idx1 < sizeX; idx1++)
-    {
-       result.append(QVector<double>());
-       for (int idx2 = 0; idx2 < sizeY; idx2++)
-       {
-    //         result[idx1].append(double());
-            result[idx1].append(double(multiple));
-       }
-    }
-    return result;
-}
+//QVector<QVector<double>> zeros(int sizeX, int sizeY)
+//{
+//   QVector<QVector<double>> result;
+//   for (int idx1 = 0; idx1 < sizeX; idx1++)
+//   {
+//      result.append(QVector<double>());
+//      for (int idx2 = 0; idx2 < sizeY; idx2++)
+//      {
+////         result[idx1].append(double());
+//           result[idx1].append(double(0));
+//      }
+//   }
+//   return result;
+//}
+//QVector<QVector<double>> ones(int sizeX, int sizeY,int multiple)
+//{
+//    QVector<QVector<double>> result;
+//    for (int idx1 = 0; idx1 < sizeX; idx1++)
+//    {
+//       result.append(QVector<double>());
+//       for (int idx2 = 0; idx2 < sizeY; idx2++)
+//       {
+//    //         result[idx1].append(double());
+//            result[idx1].append(double(multiple));
+//       }
+//    }
+//    return result;
+//}
 int main(int argc, char *argv[])
 {
     QCoreApplication a(argc, argv);
-    qDebug()<<"byteData"<<byteData<<"pcBufPing"<<pcBufPing<<endl;
+    qDebug()<<"byteData"<<byteData<<endl;
+    std::cout <<"pcBufPing"<<pcBufPing<<targetBufPing<< std::endl;
     qDebug()<<"falldetection_version:"<<YIANKANG_MAJOR_VER<<"."<<YIANKANG_MINOR_VER_;
 
     serialstart();
