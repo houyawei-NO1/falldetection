@@ -8,6 +8,9 @@
 #include "include/cppystruct.h"
 #include "NumCpp.hpp"
 #include<iostream>
+#include <tuple>
+
+using namespace std;
 
 #define YIANKANG_MAJOR_VER 0
 #define YIANKANG_MINOR_VER_ 1
@@ -17,6 +20,7 @@ bool serialPortConfig(QSerialPort *serial, qint32 baudRate, QString dataPortNum)
 void sendCfg();
 void serialstart();
 nc::NdArray<_Float64> readAndParseUart();
+tuple<unsigned int,unsigned int> tlvHeaderDecode(QByteArray data);
 //QVector<QVector<double>> zeros(int sizeX, int sizeY);
 //QVector<QVector<double>> ones(int sizeX, int sizeY,int multiple);
 
@@ -27,7 +31,7 @@ int frameTime = 50;
 QTimer * timerRead;
 QByteArray byteData("");
 qint8 fail = 0;
-int maxPoints = 1150,numDetectedTarget = 0,numDetectedObj = 0;
+int maxPoints = 1150,numDetectedTarget = 0,numDetectedObj = 0,frameNum = 0,missedFrames = 0;
 QVector<int> indexes;
 //QVector<QVector<double>> pcBufPing = zeros(5, maxPoints);
 auto pcBufPing = nc::zeros<_Float64>(5,maxPoints);
@@ -108,7 +112,7 @@ void sendCfg()
 
         QElapsedTimer t;
         t.start();
-        while(t.elapsed()<500);
+        while(t.elapsed()<100);
     }
 
     if(userPort_Connected)
@@ -166,18 +170,18 @@ QByteArray Capon3DHeader(QByteArray dataIn)
      unsigned int  trackProcessTime, numTLVs;
      unsigned short checksum;
 //    qDebug()<<"Capon3DHeader:dataIn"<<dataIn.toHex();
-    while(1)
+    while(true)
     {
          auto [magic_t, version_t, packetLength_t, platform_t, frameNum_t, subFrameNum_t, chirpMargin_t, frameMargin_t, uartSentTime_t, trackProcessTime_t, numTLVs_t, checksum_t] = pystruct::unpack(PY_STRING("Q9I2H"), dataIn.left(headerLength));
-         qDebug()<<dataIn.size()<<"magic_t"<<magic_t<<version_t<<packetLength_t<<platform_t<<frameNum_t<<subFrameNum_t<<chirpMargin_t<<frameMargin_t<<uartSentTime_t<<uartSentTime_t<<trackProcessTime_t<<numTLVs_t<<checksum_t;
-         if(magic_t==magicWord)
+//         qDebug()<<dataIn.size()<<"magic_t"<<magic_t<<version_t<<packetLength_t<<platform_t<<frameNum_t<<subFrameNum_t<<chirpMargin_t<<frameMargin_t<<uartSentTime_t<<uartSentTime_t<<trackProcessTime_t<<numTLVs_t<<checksum_t;
+         if(magic_t != magicWord && dataIn.size()>0)
             {
-            qDebug()<<"magicword_true";
+//            qDebug()<<"magicword_flase";
             dataIn = dataIn.mid(1);
             }
          else
             {
-//          qDebug()<<"magicword_flase";
+//            qDebug()<<"magicword_true";
             magic = magic_t;
             version = version_t;
             packetLength = packetLength_t;
@@ -194,10 +198,11 @@ QByteArray Capon3DHeader(QByteArray dataIn)
             }
     }
 
-    qDebug()<<dataIn.size()<<"magic"<<magic<<version<<packetLength<<platform<<frameNum<<subFrameNum<<chirpMargin<<frameMargin<<uartSentTime<<uartSentTime<<trackProcessTime<<numTLVs<<checksum;
+    qDebug()<<dataIn.size()<<"magic"<<magic<<version<<"packetLength"<<packetLength<<platform<<"frameNum"<<frameNum<<subFrameNum<<chirpMargin<<frameMargin<<uartSentTime<<uartSentTime<<trackProcessTime<<"numTLVs"<<numTLVs<<checksum;
 
     dataIn = dataIn.mid(headerLength);
     int remainingData = packetLength - dataIn.length() - headerLength;
+//check to ensure we have all of the data
     if (remainingData > 0)
     {
         QByteArray newData = dataport->read(remainingData);
@@ -205,7 +210,22 @@ QByteArray Capon3DHeader(QByteArray dataIn)
         dataIn += newData;
     }
 //     now check TLVs
-//    for(int i = 0;i)
+    for(unsigned int i = 0;i < numTLVs; i++)
+    {
+
+        //todo
+        auto[tlvType,tlvLength] = tlvHeaderDecode(dataIn.left(tlvHeaderLength));
+        dataIn =dataIn.mid(tlvHeaderLength);
+        int  dataLength = tlvLength - tlvHeaderLength;
+//                if(tlvType==6)
+//                else if(tlvType==6)
+//                else if(tlvType==6)
+//                else if(tlvType==6)
+//                qDebug()<<"tlvType"<<tlvType;
+    }
+    //check here GLOBAL frame
+//    if(frameNum +1 != frameNum)
+//        missedFrames += frameNum - (frameNum+1);
     return dataIn;
 }
 nc::NdArray<_Float64> readAndParseUart()
@@ -213,7 +233,7 @@ nc::NdArray<_Float64> readAndParseUart()
     qint64 numBytes = 4666;
     fail = 0;
     QByteArray data = dataport->readAll();
-    qDebug()<<"readAndParseuart:"<<data.size()<<byteData.size()<<endl;
+    qDebug()<<"readAndParseuart:"<<data.size()<<data<<endl;
 
     if(byteData.isEmpty())
         byteData = data;
@@ -261,6 +281,13 @@ nc::NdArray<_Float64> readAndParseUart()
 //    }
 //    return result;
 //}
+tuple<unsigned int,unsigned int> tlvHeaderDecode(QByteArray data)
+{
+//    qDebug()<<"in tlvHeaderDecode,"<<data.length();
+    auto[tlvType,tlvLength] = pystruct::unpack(PY_STRING("2I"),data);
+//    qDebug()<<tlvType<<tlvLength;
+    return tuple(tlvType,tlvLength);
+}
 int main(int argc, char *argv[])
 {
     QCoreApplication a(argc, argv);
